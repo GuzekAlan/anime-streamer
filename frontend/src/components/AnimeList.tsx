@@ -74,13 +74,20 @@ export const AnimeList: React.FC<Props> = ({ animeList, onDelete, onPlay, getPro
                   </span>
                 </div>
 
-                {(anime.status === 'downloading' || anime.status === 'converting') && (
+                {anime.status === 'downloading' && (
                   <div className="progress-bar">
                     <div 
                       className="progress-fill"
                       style={{ width: `${currentProgress.progress}%` }}
                     />
                     <span className="progress-text">{currentProgress.progress}%</span>
+                  </div>
+                )}
+
+                {anime.status === 'converting' && (
+                  <div className="converting-indicator">
+                    <div className="spinner"></div>
+                    <span>Converting to HLS...</span>
                   </div>
                 )}
 

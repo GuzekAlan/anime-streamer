@@ -6,29 +6,57 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/anacrolix/torrent"
 )
+
+var (
+	sharedTorrentClient *torrent.Client
+	clientMutex         sync.Mutex
+	activeTorrents      = make(map[string]*torrent.Torrent)
+)
+
+func getSharedTorrentClient() (*torrent.Client, error) {
+	clientMutex.Lock()
+	defer clientMutex.Unlock()
+
+	if sharedTorrentClient == nil {
+		cfg := torrent.NewDefaultClientConfig()
+		cfg.DataDir = "../storage/downloads"
+		
+		client, err := torrent.NewClient(cfg)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create shared torrent client: %v", err)
+		}
+		
+		sharedTorrentClient = client
+		log.Printf("Created shared torrent client")
+	}
+	
+	return sharedTorrentClient, nil
+}
 
 func downloadTorrent(anime *Anime) {
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("Error downloading torrent for %s: %v", anime.Name, r)
 			anime.Status = "error"
+			// Clean up from active torrents map
+			clientMutex.Lock()
+			delete(activeTorrents, anime.ID)
+			clientMutex.Unlock()
 		}
 	}()
 
-	// Create torrent client
-	cfg := torrent.NewDefaultClientConfig()
-	cfg.DataDir = "../storage/downloads"
-	client, err := torrent.NewClient(cfg)
+	// Get shared torrent client
+	client, err := getSharedTorrentClient()
 	if err != nil {
-		log.Printf("Error creating torrent client: %v", err)
+		log.Printf("Error getting torrent client: %v", err)
 		anime.Status = "error"
 		return
 	}
-	defer client.Close()
 
 	// Add torrent
 	t, err := client.AddMagnet(anime.TorrentURL)
@@ -37,6 +65,11 @@ func downloadTorrent(anime *Anime) {
 		anime.Status = "error"
 		return
 	}
+
+	// Store torrent reference for cleanup
+	clientMutex.Lock()
+	activeTorrents[anime.ID] = t
+	clientMutex.Unlock()
 
 	// Wait for torrent info
 	<-t.GotInfo()
@@ -59,6 +92,11 @@ func downloadTorrent(anime *Anime) {
 				videoFile := findVideoFile(t.Info().Name)
 				anime.HLSPath = videoFile
 				log.Printf("Download completed: %s", anime.Name)
+				
+				// Clean up from active torrents map
+				clientMutex.Lock()
+				delete(activeTorrents, anime.ID)
+				clientMutex.Unlock()
 				
 				// Start HLS conversion automatically
 				go convertVideoToHLS(anime)
@@ -135,22 +173,57 @@ func convertVideoToHLS(anime *Anime) {
 	log.Printf("Input file: %s", inputFile)
 	log.Printf("Output directory: %s", outputDir)
 
-	// Generate multiple quality variants with proper encoding settings
-	qualities := []struct {
-		name       string
+	// Define all available quality settings
+	allQualities := map[string]struct {
 		resolution string
 		bitrate    string
 		crf        string
 		preset     string
 	}{
-		{"720p", "1280x720", "2500k", "23", "medium"},
-		{"480p", "854x480", "1200k", "26", "medium"},
-		{"360p", "640x360", "600k", "28", "fast"},
+		"720p": {"1280x720", "2500k", "23", "medium"},
+		"480p": {"854x480", "1200k", "26", "medium"},
+		"360p": {"640x360", "600k", "28", "fast"},
 	}
 
+	// Filter to only convert selected qualities
+	var selectedQualityConfigs []struct {
+		name       string
+		resolution string
+		bitrate    string
+		crf        string
+		preset     string
+	}
+
+	for _, qualityName := range anime.Qualities {
+		if config, exists := allQualities[qualityName]; exists {
+			selectedQualityConfigs = append(selectedQualityConfigs, struct {
+				name       string
+				resolution string
+				bitrate    string
+				crf        string
+				preset     string
+			}{
+				name:       qualityName,
+				resolution: config.resolution,
+				bitrate:    config.bitrate,
+				crf:        config.crf,
+				preset:     config.preset,
+			})
+		}
+	}
+
+	qualities := selectedQualityConfigs
+
 	var qualityNames []string
+	totalQualities := len(qualities)
 	
-	for _, quality := range qualities {
+	for i, quality := range qualities {
+		// Update progress based on current quality being processed
+		progressPercent := (i * 100) / totalQualities
+		anime.Progress = progressPercent
+		
+		log.Printf("Converting %s to %s (%d/%d - %d%%)", anime.Name, quality.name, i+1, totalQualities, progressPercent)
+		
 		outputPath := filepath.Join(outputDir, fmt.Sprintf("%s.m3u8", quality.name))
 		segmentPattern := filepath.Join(outputDir, fmt.Sprintf("%s%%03d.ts", quality.name))
 		
@@ -159,7 +232,6 @@ func convertVideoToHLS(anime *Anime) {
 			inputFile, quality.preset, quality.crf, quality.bitrate, quality.bitrate, quality.resolution, segmentPattern, outputPath,
 		)
 		
-		log.Printf("Converting %s to %s", anime.Name, quality.name)
 		log.Printf("FFmpeg command: %s", cmd)
 		
 		// Execute FFmpeg command
@@ -176,9 +248,15 @@ func convertVideoToHLS(anime *Anime) {
 			log.Printf("Failed to create %s playlist: %v", quality.name, err)
 		}
 	}
+	
+	// Set final progress to 100% when conversion is complete
+	anime.Progress = 100
 
 	// Create master playlist
 	createMasterPlaylist(outputDir, qualityNames)
+	
+	// Save anime metadata for future restoration
+	saveAnimeMetadata(outputDir, anime)
 	
 	// Create HLS URLs map for each quality
 	hlsUrls := make(map[string]string)
@@ -224,6 +302,36 @@ func createMasterPlaylist(outputDir string, qualities []string) {
 		file.WriteString(fmt.Sprintf("#EXT-X-STREAM-INF:BANDWIDTH=%s,RESOLUTION=%s\n", 
 			bandwidths[quality], resolutions[quality]))
 		file.WriteString(fmt.Sprintf("%s.m3u8\n", quality))
+	}
+}
+
+func cleanupTorrent(animeID string) {
+	clientMutex.Lock()
+	defer clientMutex.Unlock()
+	
+	if torrent, exists := activeTorrents[animeID]; exists {
+		log.Printf("Cleaning up torrent for anime ID: %s", animeID)
+		
+		// Drop the torrent from the client
+		if sharedTorrentClient != nil {
+			torrent.Drop()
+		}
+		
+		// Remove from active torrents map
+		delete(activeTorrents, animeID)
+		
+		log.Printf("Torrent cleanup completed for anime ID: %s", animeID)
+	}
+}
+
+func saveAnimeMetadata(outputDir string, anime *Anime) {
+	metadataFile := filepath.Join(outputDir, "metadata.txt")
+	content := fmt.Sprintf("%s\n%s\n%s", anime.Name, anime.TorrentURL, anime.CreatedAt)
+	
+	if err := os.WriteFile(metadataFile, []byte(content), 0644); err != nil {
+		log.Printf("Failed to save metadata for %s: %v", anime.Name, err)
+	} else {
+		log.Printf("Saved metadata for %s", anime.Name)
 	}
 }
 

@@ -1,8 +1,31 @@
+/* Reset default browser margins and padding */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+}
+
+#root {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  min-height: 100vh;
+}
+
 .App {
   text-align: center;
   min-height: 100vh;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
+  margin: 0;
+  padding: 0;
 }
 
 .App-header {
@@ -103,6 +126,75 @@
 .add-anime-form button:disabled {
   background: #ccc;
   cursor: not-allowed;
+}
+
+/* Quality Checkboxes */
+.quality-checkboxes {
+  display: flex;
+  gap: 1rem;
+  margin-top: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  padding: 0.5rem;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  transition: background 0.3s;
+}
+
+.checkbox-label:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.checkbox-label input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+.checkbox-text {
+  font-weight: 500;
+  color: white;
+}
+
+.error-text {
+  color: #f44336;
+  font-size: 0.9rem;
+  margin-top: 0.5rem;
+}
+
+/* Converting Indicator */
+.converting-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem 0;
+  justify-content: center;
+}
+
+.converting-indicator span {
+  font-size: 0.9rem;
+  color: #FF9800;
+  font-weight: 500;
+}
+
+.spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(255, 152, 0, 0.3);
+  border-top: 2px solid #FF9800;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 
 /* Anime List */

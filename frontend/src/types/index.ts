@@ -14,4 +14,5 @@ export interface Anime {
 export interface AddAnimeRequest {
   name: string;
   torrent_url: string;
+  qualities: string[];
 }
