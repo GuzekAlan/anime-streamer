@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { Anime, AddAnimeRequest } from '../types';
+import { config } from '../config';
 
-const API_BASE = '/api';
+const API_BASE = `${config.apiBaseUrl}/api`;
 
 export const useAnime = () => {
   const [animeList, setAnimeList] = useState<Anime[]>([]);

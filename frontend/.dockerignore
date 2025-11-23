@@ -1,10 +1,10 @@
-storage/
-node_modules/
-.env
+node_modules
+npm-debug.log
+build
+.git
+.gitignore
+README.md
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
-*.log
-backend/anime-streamer
-frontend/build

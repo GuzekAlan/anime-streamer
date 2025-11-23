@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import Hls from 'hls.js';
 import { Anime } from '../types';
+import { config } from '../config';
 
 interface Props {
   anime: Anime;
@@ -24,10 +25,10 @@ export const VideoPlayer: React.FC<Props> = ({ anime, onClose }) => {
     if (Hls.isSupported()) {
       const hls = new Hls();
       hlsRef.current = hls;
-      
-      hls.loadSource(`http://localhost:8080${anime.hls_path}`);
+
+      hls.loadSource(`${config.apiBaseUrl}${anime.hls_path}`);
       hls.attachMedia(video);
-      
+
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
         console.log('HLS manifest loaded');
       });
@@ -38,7 +39,7 @@ export const VideoPlayer: React.FC<Props> = ({ anime, onClose }) => {
 
     } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
       // Safari native HLS support
-      video.src = `http://localhost:8080${anime.hls_path}`;
+      video.src = `${config.apiBaseUrl}${anime.hls_path}`;
     }
 
     return () => {
@@ -102,15 +103,15 @@ export const VideoPlayer: React.FC<Props> = ({ anime, onClose }) => {
     if (!video) return;
 
     let sourceUrl: string;
-    
+
     if (quality === 'auto') {
       // Use master playlist for auto quality
-      sourceUrl = `http://localhost:8080${anime.hls_path}`;
+      sourceUrl = `${config.apiBaseUrl}${anime.hls_path}`;
     } else {
       // Use specific quality URL
-      sourceUrl = anime.hls_urls?.[quality] 
-        ? `http://localhost:8080${anime.hls_urls[quality]}`
-        : `http://localhost:8080${anime.hls_path}`;
+      sourceUrl = anime.hls_urls?.[quality]
+        ? `${config.apiBaseUrl}${anime.hls_urls[quality]}`
+        : `${config.apiBaseUrl}${anime.hls_path}`;
     }
 
     const currentTime = video.currentTime;

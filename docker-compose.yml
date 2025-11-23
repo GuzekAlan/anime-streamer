@@ -1,0 +1,52 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: anime-streamer-backend
+    ports:
+      - "8080:8080"
+    volumes:
+      # Persist downloads and HLS files
+      - ./storage/downloads:/storage/downloads
+      - ./storage/hls:/storage/hls
+    restart: unless-stopped
+    networks:
+      - anime-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/api/anime"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # Set the API URL to the backend service
+        REACT_APP_API_URL: http://localhost:8080
+    container_name: anime-streamer-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - anime-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  anime-network:
+    driver: bridge
+
+volumes:
+  downloads:
+  hls:
